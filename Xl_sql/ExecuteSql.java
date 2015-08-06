@@ -31,7 +31,7 @@ public class ExecuteSql {
         }
     }
 
-    /* 执行sql 语句 ，获得结果*/
+    /* 执行sql 语句 ，-->查询类   获得结果*/
     String execute() throws SQLException {
         String result = "";
         String temps = "";
@@ -50,7 +50,21 @@ public class ExecuteSql {
             }
             result += temps;
         }
+        /* 用完必须归还连接到连接池中*/
         con.close();
+        /* 返回查询结果 */
         return result;
+    }
+
+    /* 执行sql语句，更新类 --> 返回结果*/
+    int update() throws SQLException{
+        /* 准备sql*/
+        PreparedStatement pst2 = con.prepareStatement(sql);
+        /* 返回更新结果 */
+        int iret = pst2.executeUpdate();
+        /* 用完必须归还连接到连接池中*/
+        con.close();
+        System.out.println(iret);
+        return iret;
     }
 }
