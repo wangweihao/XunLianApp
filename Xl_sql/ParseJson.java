@@ -1,7 +1,11 @@
 import org.json.JSONObject;
 
 import javax.naming.InsufficientResourcesException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.*;
 
 /**
  * Created by wwh on 15-8-6.
@@ -21,7 +25,7 @@ public class ParseJson {
         int mark = js.getInt("mark");
         System.out.println("mark:" + mark);
         /* 结果 */
-        String result = null;
+        String result = "";
         int iret = 0;
 
         switch (mark){
@@ -36,11 +40,15 @@ public class ParseJson {
                 result = es1.execute();
                 /* 将结果转换为整型 */
                 int ret = Integer.parseInt(result);
-                /* 判断结果并且返回 */
+                /* 判断结果并且返回 1表示失败帐号存在，其他表示成功，帐号未注册 */
                 if(ret == 1) {
-                    result = "帐号已存在\0";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account1 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"该帐号已存在\"}}";
                 }else{
-                    result = "此帐号可以注册\0";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account1 + "\", \"IsSuccess\":\"failure\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"该帐号不存在\"}}";
                 }
                 break;
 
@@ -58,11 +66,14 @@ public class ParseJson {
                 ExecuteSql es2 = new ExecuteSql(sql2, 1);
                 /* 执行sql语句 */
                 iret = es2.update();
-                result = Integer.valueOf(iret).toString();
                 if(iret == 1){
-                    result += " 注册成功";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"注册成功\"}}";
                 }else{
-                    result += " 注册失败";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"注册失败\"}}";
                 }
                 break;
 
@@ -85,6 +96,7 @@ public class ParseJson {
                 }else {
                     result += " 验证失败";
                 }
+                break;
 
             /* mark ==4 用户更新密码 */
             case 4:
@@ -104,9 +116,11 @@ public class ParseJson {
                 }else{
                     result += " 修改密码失败";
                 }
+                break;
 
             /* mark ==5 用户更新信息
-             * 自己的name，头像等 */
+             * 自己的name，头像等
+             * 一般用户点击详细信息会有更新操作 */
             case 5:
                 /* update数据库个人信息记录*/
                 /* 获取用户账户*/
@@ -116,8 +130,8 @@ public class ParseJson {
                 /* 获取用户头像信息 */
                 String position5 = js.getString("head");
                 /* 生成sql语句 */
-                String sql5 = "update UserInfo set name = " + name5 + ", head = "
-                        + position5 + "where account = " + account5 + ";";
+                String sql5 = "update UserInfo set name = \'" + name5 + "\', head = \'"
+                        + position5 + "\' where account = \'" + account5 + "\';";
                 /* 根据sql生成可执行对象，获取数量为1 */
                 ExecuteSql es5 = new ExecuteSql(sql5, 1);
                 /* 执行更新语句，因为个人信息未定。暂定为如下 */
@@ -125,24 +139,37 @@ public class ParseJson {
                 /* 获取返回值 */
                 result = Integer.valueOf(iret).toString();
                 if(iret == 1){
-                    result += " 修改个人资料成功";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account5 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"修改资料成功\"}}";
                 }else{
-                    result += " 修改个人资料失败";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account5 + "\", \"IsSuccess\":\"failure\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"修改资料失败\"}}";
                 }
+                break;
 
 
             /* mark ==6
-             * 登记新的联系方式*/
+             * 登记新的联系方式
+             * 需要修改UserFriend 好友and me 的 is update
+             * 每次好友登录需要检查好友的isupdate
+             * 看谁换联系方式了 */
             case 6:
                 /* 获取用户账户 */
                 String account6 = js.getString("account");
-                /* 根据type判断对应的联系方式，1.手机号 2.邮箱 3.qq号 4.微博 */
+                /* 根据type判断对应的联系方式，1.手机号 2.邮箱 3.qq号 4.微博
+                 * 更加细分type 11.个人 12.工作 13.家庭
+                 *             21.个人 22.工作 23.其他
+                 *             31
+                 *             41*/
                 int type6 = js.getInt("type");
                 /* 获得联系方式的具体内容 */
                 String contact6 = js.getString("contact");
                 /* 生成sql语句 */
                 String sql6 = "insert into UserContact (uid, type, content) values ((select uid from UserInfo" +
-                        "where account = " + account6 + ")," + type6 + "," + contact6 +");";
+                        " where account = \'" + account6 + "\'), " + type6 + ", \'" + contact6 +"\');";
+                System.out.println(sql6);
                 /* 根据sql生成可执行对象，获取数量为1 */
                 ExecuteSql es6 = new ExecuteSql(sql6, 1);
                 /* 执行sql */
@@ -150,26 +177,82 @@ public class ParseJson {
                 /* 获取返回值 */
                 result = Integer.valueOf(iret).toString();
                 if(iret == 1){
-                    result += " 插入新的数据成功";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account6 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"更新信息成功\"}}";
                 }else {
-                    result += " 插入新的数据失败";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account6 + "\", \"IsSuccess\":\"failure\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"更新信息失败\"}}";
                 }
+                /* 更新UserFriend好友关系表的
+                 *  好友and me的is update
+                 *  问题 type应该更加细分 */
+                String querysql = "select uid from UserInfo where account = \'" + account6 + "\';";
+                ExecuteSql esq = new ExecuteSql(querysql, 1);
+                String id = esq.execute();
+                String updatesql = "update UserFriend set isUpdate = "+ type6 + " where friendId = " +
+                        id;
+                System.out.println(updatesql);
+                /* 生成更新sql语句的对象 */
+                ExecuteSql es61 = new ExecuteSql(updatesql, 1);
+                /* 执行sql，更新数据 */
+                /* 会更新好友和我的isUpdate，下拉刷新时检查isUpdate */
+                int tret = es61.update();
+                System.out.println("update " + tret);
+                if(tret == 1){
+                    System.out.println("更新成功");
+                }else{
+                    System.out.println("更新失败");
+                }
+                break;
 
             /* mark == 7
             *  说明本地没有数据，客户端需要发送全部数据 */
             case 7:
+                Connection con7 = XlDbPoll.getConnection();
                 /* 获取用户账户 */
                 String account7 = js.getString("account");
-                /* 生成待查询的sql语句 */
-                String sql7 = "select uid, type, content from UserInfo UserContact where uid in" +
-                        "(select friendId from UserFriend where uid = (select uid from UserInfo " +
-                        "where account = " + account7 + "));";
-                /* 根据sql生成查询可执行对象， 获得查询数量 */
+                /* 获取查询改帐号uid的语句 */
+                String getAccount = "select uid from UserInfo where account = \'" + account7 + "\';";
+                /* 返回预编译statement对象 */
+                PreparedStatement ps7 = con7.prepareStatement(getAccount);
+                /* 查询 */
+                ResultSet rs7 = ps7.executeQuery();
+                /* 必须有.next()才会移动到第一行 */
+                rs7.next();
+                /* uid是第一个对象，获得结果 */
+                int uid7 = rs7.getInt(1);
+                System.out.println(result);
+                /* 得到friendId */
+                String getFriendId = "select friendId from UserFriend where uid = " + uid7 + ";";
+                /* 返回预编译对象 */
+                ps7 = con7.prepareStatement(getFriendId);
+                /* 查询 */
+                ResultSet fret = ps7.executeQuery();
+                /* 定义结果集，并且将查询内容添加到结果集合中，用HashSet是为了去除重复 */
+                HashSet<Integer> FidSet = new HashSet<Integer>();
+                while(fret.next())
+                {
+                    FidSet.add(fret.getInt(1));
+                }
+                /* 获得每个好友的信息及联系方式 */
+                result += "\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                        "\"result\":(";
+                for(Integer i : FidSet){
+                    System.out.println(i);
+                    String getFriend = "select type, content from UserContact where uid = " + i + ";";
+                    ps7 = con7.prepareStatement(getFriend);
+                    ResultSet friendSet = ps7.executeQuery();
+                    while(friendSet.next()){
+                        result += friendSet.getInt(1);
+                        result += "Phone";
+                        result += friendSet.getString(2);
+                        result += "  ";
+                    }
+                }
 
-                /* !!!这块需要修改，整体查询数据量比较大，并且需要备注 */
-                ExecuteSql es7 = new ExecuteSql(sql7, 1);
-                /* 执行sql语句 */
-                result = es7.execute();
+                break;
 
             /* mark == 8
             *  说明本地有数据，只发送好友的数据 */
@@ -234,18 +317,23 @@ public class ParseJson {
                 /* 获得密码 */
                 String password12 = js.getString("secret");
                 /* 获得执行的sql语句 */
-                String sql12 = "select count(*) from UserInfo where account = " + account12
-                        + "and password = " + password12 + ";";
+                String sql12 = "select count(*) from UserInfo where account = \'" + account12
+                        + "\'and password = \'" + password12 + "\';";
                 /* 获得执行sql语句的对象 */
                 ExecuteSql es12 = new ExecuteSql(sql12, 1);
                 /* 获得结果 */
                 result = es12.execute();
                 iret = Integer.parseInt(result);
                 if(iret == 1){
-                    result += " 登录成功";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account12 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"登录成功\"}}";
                 }else{
-                    result += " 登录失败，帐号或密码错误";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account12 + "\", \"IsSuccess\":\"failure\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"登录失败\"}}";
                 }
+                break;
 
             /* mark == 13
             *  删除联系人 */
@@ -256,8 +344,8 @@ public class ParseJson {
                 String friendAccount13 = js.getString("friendaccount");
                 /* 生成待执行的sql语句 */
                 String sql13 = "delete from UserFriend where " +
-                        "friendId = ( select uid from UserInfo where account = " + friendAccount13
-                        + ") and (select uid from UserInfo where account = "  + acconut13 + ");";
+                        "friendId = ( select uid from UserInfo where account = \'" + friendAccount13
+                        + "\') and (select uid from UserInfo where account = \'"  + acconut13 + "\');";
                 /* 获得执行sql语句的对象 */
                 ExecuteSql es13 = new ExecuteSql(sql13, 1);
                 /* 执行sql语句 */
