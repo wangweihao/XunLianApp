@@ -308,10 +308,15 @@ public class ParseJson {
                 {
                     FidSet.add(fret.getInt(1));
                 }
+                con7.close();
                 /* 通过好友的uid集合来一一获取好友信息
                  * 然后 组装成json数组 返回给用户 */
                 /* 获取连接池中的一条连接 */
                 Connection connectionInfoSql = XlDbPoll.getConnection();
+                result += "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                        "\"result\":[";
+                /* 设置一个标签 */
+                int tap = 0;
                 for(int userId : FidSet){
                     /* 查询好友的信息 */
                     String infoSql = "select name, head from UserInfo where uid = \"" + userId + "\";";
@@ -320,8 +325,10 @@ public class ParseJson {
                     /* 必须要有next(),跳转到第一个信息 */
                     rsInfo.next();
                     /* 获取姓名和头像 */
-                    String name = rsInfo.getString(1);
-                    String head = rsInfo.getString(2);
+                    String tname = rsInfo.getString(1);
+                    String thead = rsInfo.getString(2);
+                    System.out.println("tname:" + tname);
+                    System.out.println("thead:" + thead);
                     /* 获取联系信息 */
                     String contactSql = "select type, content from UserContact where uid = \"" + userId + "\";";
                     PreparedStatement PreContact = connectionInfoSql.prepareStatement(contactSql);
@@ -330,37 +337,98 @@ public class ParseJson {
                     *  因为稍后要将数据序列化发送给对方
                     *  map是默认有序的
                     *  这样会比较好序列化 */
-                    HashMap<Integer, String> FriendInfo = new HashMap<Integer, String>();
+                    //HashMap<Integer, String> FriendInfo = new HashMap<Integer, String>();
+                    /* 准备设置一个好友的json格式的消息
+                    * 消息包括
+                    * 姓名，头像
+                    * 家庭，工作，个人电话
+                    * 家庭，工作，个人邮箱
+                    * qq和微博
+                    * */
+                    String name;
+                    if(tap == 0){
+                        name = "{\"name\":\"" + tname + "\",";
+                        ++tap;
+                    }else{
+                        name = ",{\"name\":\"" + tname + "\",";
+                    }
+                    String head = "\"head\":\"" + thead + "\",";
+                    String personPhoneNumber = "\"personNumber\":\"";
+                    String workPhoneNumber = "\"workPhoneNumber\":\"";
+                    String homePhoneNumber = "\"homePhoneNumber\":\"";
+                    String personEmail = "\"personEmail\":\"";
+                    String workEmail = "\"workEmail\":\"";
+                    String homeEmail = "\"homeEmail\":\"";
+                    String qqNumber = "\"qqNumber\":\"";
+                    String weiboNumber = "\"weiboNumber\":\"";
+
+                    result += name;
+                    result += head;
+                    /* 获得每个好友的信息及联系方式
+                     * 下面构造result
+                     * */
                     while(rsCon.next()){
                         /* 获得标记联系方式和具体的联系方式 */
                         int type = rsCon.getInt(1);
                         String content = rsCon.getString(2);
-                        /* 加入map集合中,默认是有序的 */
-                        FriendInfo.put(type, content);
+                        /* 由于每个好友的信息不一定完全
+                        * 比如好友1只填写了电话，微博qq等都为空，
+                        * 所以在这需要自己进行判断
+                        * */
+                        switch(type){
+                            case 1:
+                                /* 如果存在个人电话，获取 */
+                                personPhoneNumber += content;
+                                personPhoneNumber += "\",";
+                                break;
+                            case 2:
+                                /* 如果存在工作电话，获取 */
+                                workPhoneNumber += content;
+                                workPhoneNumber += "\",";
+                                break;
+                            case 4:
+                                /* 如果存在家庭电话，获取 */
+                                homePhoneNumber += content;
+                                homePhoneNumber += "\",";
+                                break;
+                            case 8:
+                                /* 如果存在个人邮箱，获取 */
+                                personEmail += content;
+                                personEmail += "\",";
+                                break;
+                            case 16:
+                                /* 如果存在工作邮箱，获取 */
+                                workEmail += content;
+                                workEmail += "\",";
+                                break;
+                            case 32:
+                                /* 如果存在家庭邮箱，获取*/
+                                homeEmail += content;
+                                homeEmail += "\",";
+                                break;
+                            case 64:
+                                /* 如果存在qq，获取 */
+                                qqNumber += content;
+                                qqNumber += "\",";
+                                break;
+                            case 128:
+                                /* 如果存在微博，获取 */
+                                weiboNumber += content;
+                                weiboNumber += "\"}";
+                                break;
+                        }
                     }
+                    result += personPhoneNumber;
+                    result += workPhoneNumber;
+                    result += homePhoneNumber;
+                    result += personEmail;
+                    result += workEmail;
+                    result += homeEmail;
+                    result += qqNumber;
+                    result += weiboNumber;
                 }
-
-
-
-
-
-                /* 获得每个好友的信息及联系方式 */
-                result += "\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
-                        "\"result\":{";
-                for(Integer i : FidSet){
-                    System.out.println(i);
-                    String getFriend = "select type, content from UserContact where uid = " + i + ";";
-                    ps7 = con7.prepareStatement(getFriend);
-                    ResultSet friendSet = ps7.executeQuery();
-                    while(friendSet.next()){
-                        result += friendSet.getInt(1);
-                        result += ", \"Phone\":";
-                        result += friendSet.getString(2);
-                        result += " ";
-                    }
-                }
-                result += "};";
-
+                connectionInfoSql.close();
+                result += "]};";
                 break;
 
             /* mark == 8
