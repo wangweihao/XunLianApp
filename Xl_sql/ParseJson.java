@@ -6,8 +6,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
+
+
 /**
- * Created by wwh on 15-8-6.
+ * Created by wangweihao on 15-8-6.
  */
 public class ParseJson {
     /* 待解析的json对象 */
@@ -20,12 +22,19 @@ public class ParseJson {
 
     /* 解析json并获取相应的结果 */
     String Parse() throws SQLException {
-        /* 获得mark，创建对应的Executesql对象 */
-        int mark = js.getInt("mark");
-        System.out.println("mark:" + mark);
         /* 结果 */
         String result = "";
         int iret = 0;
+        int mark = 0;
+        /* 获得mark，创建对应的Executesql对象 */
+        try {
+            mark = js.getInt("mark");
+        }catch (Exception e){
+            result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                    "\"result\":{\"requestPhoneNum\":\"\", \"IsSuccess\":\"failure\"," +
+                    "\"mark\":0, \"ResultINFO\":\"json解析失败，您的输入有误\"}}";
+            return result;
+        }
 
         switch (mark){
             /* mark == 1 检测此帐号是否正确且被注册过 */
@@ -55,16 +64,37 @@ public class ParseJson {
             case 2:
                 /* 在数据库中设置帐号和密码 */
                 /* 获取用户账户 */
-                String account2 = js.getString("account");
+                String account2 = "";
+                String password2 = "";
+
+                try {
+                    account2 = js.getString("account");
                 /* 获取注册用户的密码*/
-                String password2 = js.getString("secret");
+                    password2 = js.getString("secret");
+                }catch (Exception e){
+                    System.out.println("json解析失败");
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"客户端json格式有误\"}}";
+                    break;
+                }
                 /* 生成对应的sql语句 */
                 String sql2 = "insert into UserInfo (account, password) values (\"" +
                         account2 + "\",\"" + password2 + "\");";
                 /* 标识2是更新语句，生成一个可执行sql语句的对象 */
-                ExecuteSql es2 = new ExecuteSql(sql2, 1);
-                /* 执行sql语句 */
-                iret = es2.update();
+                ExecuteSql es2 = null;
+                try {
+                    es2 = new ExecuteSql(sql2, 1);
+                    /* 执行sql语句 */
+                    iret = es2.update();
+                }catch (Exception e){
+                    System.out.println("帐号以存在");
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"帐号以存在\"}}";
+                    break;
+                }
+
                 if(iret == 1){
                     result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
                             "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"success\"," +
@@ -76,12 +106,24 @@ public class ParseJson {
                 }
                 break;
 
+
             /* mark == 3 忘记密码 注意：应该验证密宝后返回用户一个key值，mark4根据key值来改新密码 */
             case  3:
                 /* 查询数据库是否有此条记录 */
-                String account3 = js.getString("account");
-                int type3 = js.getInt("type");
-                String verify = js.getString("verify");
+
+                String account3 = null;
+                int type3 = 0;
+                String verify = null;
+                try {
+                    account3 = js.getString("account");
+                    type3 = js.getInt("type");
+                    verify = js.getString("verify");
+                }catch (Exception e){
+                    System.out.println("json解析失败");
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"00000000\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"json解析失败，检测输入是否正确\"}}";
+                }
                 String sql3 = "select count(*) from UserContact where type = \"" + type3 + "\"and uid = " +
                         "(select uid from UserInfo where account = \"" + account3 + "\") and " +
                         "content = \"" + verify + "\";";
@@ -515,13 +557,13 @@ public class ParseJson {
                         }
                         String head = "\"head\":\"" + thead + "\",";
                         String personPhoneNumber = "\"personNumber\":\"";
-                        String workPhoneNumber = "\"workPhoneNumber\":\"";
-                        String homePhoneNumber = "\"homePhoneNumber\":\"";
-                        String personEmail = "\"personEmail\":\"";
-                        String workEmail = "\"workEmail\":\"";
-                        String homeEmail = "\"homeEmail\":\"";
-                        String qqNumber = "\"qqNumber\":\"";
-                        String weiboNumber = "\"weiboNumber\":\"";
+                        String workPhoneNumber = "\",\"workPhoneNumber\":\"";
+                        String homePhoneNumber = "\",\"homePhoneNumber\":\"";
+                        String personEmail = "\",\"personEmail\":\"";
+                        String workEmail = "\",\"workEmail\":\"";
+                        String homeEmail = "\",\"homeEmail\":\"";
+                        String qqNumber = "\",\"qqNumber\":\"";
+                        String weiboNumber = "\",\"weiboNumber\":\"";
 
                         int isUpdate = FriendId.get(keyUid);
                         /* 8bit位 若标记为1 说明qqNumber更新 */
@@ -608,7 +650,7 @@ public class ParseJson {
                         result += weiboNumber;
                     }
                 }
-                result += "]};";
+                result += "\"]};";
                 connectionUpdate.close();
                 break;
 
@@ -652,15 +694,15 @@ public class ParseJson {
                 String name = "{\"name\":\"" + tname + "\",";
                 String head = "\"head\":\"" + thead + "\",";
                 String personPhoneNumber = "\"personNumber\":\"";
-                String workPhoneNumber = "\"workPhoneNumber\":\"";
-                String homePhoneNumber = "\"homePhoneNumber\":\"";
-                String personEmail = "\"personEmail\":\"";
-                String workEmail = "\"workEmail\":\"";
-                String homeEmail = "\"homeEmail\":\"";
-                String qqNumber = "\"qqNumber\":\"";
-                String weiboNumber = "\"weiboNumber\":\"";
+                String workPhoneNumber = "\",\"workPhoneNumber\":\"";
+                String homePhoneNumber = "\",\"homePhoneNumber\":\"";
+                String personEmail = "\",\"personEmail\":\"";
+                String workEmail = "\",\"workEmail\":\"";
+                String homeEmail = "\",\"homeEmail\":\"";
+                String qqNumber = "\",\"qqNumber\":\"";
+                String weiboNumber = "\",\"weiboNumber\":\"";
                 result += "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
-                        "\"result\":";
+                        "\"result\":[";
 
                 /* 查询该好友的全部信息并组装成json发送回客户端 */
                 result += name;
@@ -736,7 +778,7 @@ public class ParseJson {
                 result += homeEmail;
                 result += qqNumber;
                 result += weiboNumber;
-                result += "};";
+                result += "\"]};";
                 /* 关闭连接池 */
                 addFriendCon.close();
                 break;
@@ -751,7 +793,7 @@ public class ParseJson {
                 /* 获取权限(二维码上) */
                 int addAuthority = js.getInt("authority");
                 /* 获取超时时间，取时比较，若超时返回错误(二维码上) */
-                String addTime_out = js.getString("time_out");
+                int addTime_out = js.getInt("time_out");
                 /* 获取本人和好友的uid
                 *  向好友表中插入一个数据
                 *  根据authority获取本人信息
@@ -761,8 +803,10 @@ public class ParseJson {
                 Connection QrAddFriendConn = XlDbPoll.getConnection();
                 /* 获取本人和好友uid的sql语句 */
                 String getUserUid = "select uid from UserInfo where account = \"" + account10 + "\";";
-                String getFriendUid = "select uid from UserInfo where account = \"" + addFriendAccount + "\"";
+                String getFriendUid = "select uid from UserInfo where account = \"" + addFriendAccount + "\";";
                 /* 得到本人和好友的uid */
+                System.out.println("getUserUid:" + getUserUid);
+                System.out.println("getFriendUid:" + getFriendUid);
                 PreparedStatement getUserUidPst = QrAddFriendConn.prepareStatement(getUserUid);
                 ResultSet getUserRs = getUserUidPst.executeQuery();
                 getUserRs.next();
@@ -771,9 +815,15 @@ public class ParseJson {
                 ResultSet getFriendRs = getUserFriendUid.executeQuery();
                 getFriendRs.next();
                 int getfriendUid = getFriendRs.getInt(1);
+                System.out.println("uid:" + userUid);
+                System.out.println("friendUid:" + getfriendUid);
+
+                /* 需要查询数据库看二维码是否过期 */
+
                 /* 向好友表中插入一条数据 */
-                String insertFriendTable = "insert into UserFriend (uid, friendId) values (\"" + getfriendUid
-                        + "\", \"" + userUid + "\");";
+                String insertFriendTable = "insert into UserFriend (uid, friendId) values (" + getfriendUid
+                        + ", " + userUid + ");";
+                System.out.println("------------" + insertFriendTable);
                 PreparedStatement insertFriend = QrAddFriendConn.prepareStatement(insertFriendTable);
                 int insertRet = insertFriend.executeUpdate();
                 if(insertRet == 1){
@@ -782,7 +832,8 @@ public class ParseJson {
                     System.out.println("no");
                 }
                 /* 根据authority获取信息 */
-                String getNameHeadSql = "select name,head from UserInfo where uid = \"" + getFriendUid + "\";";
+                String getNameHeadSql = "select name, head from UserInfo where uid = \"" + getfriendUid + "\";";
+                System.out.println(getNameHeadSql + "---------------");
                 PreparedStatement getNameHeadPst = QrAddFriendConn.prepareStatement(getNameHeadSql);
                 ResultSet getNameHeadRs = getNameHeadPst.executeQuery();
                 getNameHeadRs.next();
@@ -792,20 +843,20 @@ public class ParseJson {
                 String iname = "{\"name\":\"" + itname + "\",";
                 String ihead = "\"head\":\"" + ithead + "\",";
                 String ipersonPhoneNumber = "\"personNumber\":\"";
-                String iworkPhoneNumber = "\"workPhoneNumber\":\"";
-                String ihomePhoneNumber = "\"homePhoneNumber\":\"";
-                String ipersonEmail = "\"personEmail\":\"";
-                String iworkEmail = "\"workEmail\":\"";
-                String ihomeEmail = "\"homeEmail\":\"";
-                String iqqNumber = "\"qqNumber\":\"";
-                String iweiboNumber = "\"weiboNumber\":\"";
+                String iworkPhoneNumber = "\",\"workPhoneNumber\":\"";
+                String ihomePhoneNumber = "\",\"homePhoneNumber\":\"";
+                String ipersonEmail = "\",\"personEmail\":\"";
+                String iworkEmail = "\",\"workEmail\":\"";
+                String ihomeEmail = "\",\"homeEmail\":\"";
+                String iqqNumber = "\",\"qqNumber\":\"";
+                String iweiboNumber = "\",\"weiboNumber\":\"";
                 result += "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
-                        "\"result\":";
+                        "\"result\":[";
 
                 if(addAuthority >= 128){
                             /* 删除log128位 标记*/
                     addAuthority -= 128;
-                    String weiboNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String weiboNumberSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 128;";
                     PreparedStatement weiboNUmberPst = QrAddFriendConn.prepareStatement(weiboNumberSql);
                     ResultSet weiboNumberRs = weiboNUmberPst.executeQuery();
@@ -814,7 +865,7 @@ public class ParseJson {
                 }
                 if(addAuthority >= 64){
                     addAuthority -= 64;
-                    String qqNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String qqNumberSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 64;";
                     PreparedStatement qqNumberPst = QrAddFriendConn.prepareStatement(qqNumberSql);
                     ResultSet qqNumberRs = qqNumberPst.executeQuery();
@@ -823,7 +874,7 @@ public class ParseJson {
                 }
                 if(addAuthority >= 32){
                     addAuthority -= 32;
-                    String homeEmailSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String homeEmailSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 32;";
                     PreparedStatement homeEmailPst = QrAddFriendConn.prepareStatement(homeEmailSql);
                     ResultSet homeEmailRs = homeEmailPst.executeQuery();
@@ -832,7 +883,7 @@ public class ParseJson {
                 }
                 if(addAuthority >= 16){
                     addAuthority -= 16;
-                    String workEmailSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String workEmailSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 16;";
                     PreparedStatement workEmailPst = QrAddFriendConn.prepareStatement(workEmailSql);
                     ResultSet workEmailRs = workEmailPst.executeQuery();
@@ -841,7 +892,7 @@ public class ParseJson {
                 }
                 if(addAuthority >= 8){
                     addAuthority -= 8;
-                    String personEmailSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String personEmailSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 8;";
                     PreparedStatement personEmailPst = QrAddFriendConn.prepareStatement(personEmailSql);
                     ResultSet personEmailRs = personEmailPst.executeQuery();
@@ -850,7 +901,7 @@ public class ParseJson {
                 }
                 if(addAuthority >= 4){
                     addAuthority -= 4;
-                    String homePhoneNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String homePhoneNumberSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 4;";
                     PreparedStatement homePhoneNumberPst = QrAddFriendConn.prepareStatement(homePhoneNumberSql);
                     ResultSet homePhoneNumberRs = homePhoneNumberPst.executeQuery();
@@ -859,7 +910,7 @@ public class ParseJson {
                 }
                 if(addAuthority >= 2){
                     addAuthority -= 2;
-                    String workPhoneNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String workPhoneNumberSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 2;";
                     PreparedStatement workPhoneNumberPst = QrAddFriendConn.prepareStatement(workPhoneNumberSql);
                     ResultSet workPhoneNumberRs = workPhoneNumberPst.executeQuery();
@@ -868,7 +919,7 @@ public class ParseJson {
                 }
                 if(addAuthority >= 1){
                     addAuthority -= 1;
-                    String personPhoneNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                    String personPhoneNumberSql = "select content from UserContact where uid = \"" + getfriendUid
                             + "\" and type = 1;";
                     PreparedStatement personPhoneNumberPst = QrAddFriendConn.prepareStatement(personPhoneNumberSql);
                     ResultSet personPhoneNumberRs = personPhoneNumberPst.executeQuery();
@@ -884,7 +935,7 @@ public class ParseJson {
                 result += iqqNumber;
                 result += iweiboNumber;
 
-                result += "]};";
+                result += "\"]};";
                 QrAddFriendConn.close();
                 break;
 
@@ -976,7 +1027,7 @@ public class ParseJson {
                             "\"result\":{\"requestPhoneNum\":\"" + acconut13 + "\", \"IsSuccess\":\"failure\"," +
                             "\"mark\":" + mark + ",\"ResultINFO\":\"删除失败\"}}";
                 }
-
+                break;
         }
         return result;
     }
