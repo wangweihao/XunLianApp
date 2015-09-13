@@ -1,6 +1,5 @@
 import org.json.JSONObject;
 
-import javax.naming.InsufficientResourcesException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -432,12 +431,187 @@ public class ParseJson {
                 break;
 
             /* mark == 8
-            *  说明本地有数据，只更新发送好友的数据 */
+            *  说明本地有数据，只更新发送好友的数据
+            *  相当于下拉刷新 */
+            /*
+            *  先通过account 获得用户 uid
+            *  uid 获取 friendId
+            *  friendId and uid 获取不为0的 isUpdate数据
+            *  分析isUpdate数据，找出标记，组装好友更新的数据，返回
+            */
             case 8:
+                /* 从连接池中获取一条数据库连接 */
+                Connection connectionUpdate = XlDbPoll.getConnection();
                 /* 获取用户帐号 */
                 String account8 = js.getString("account");
-                /* 生成待查询的sql语句 */
-                String sql8 = "";
+                /* 生成获得uid的sql语句 */
+                String getUidSql = "select Uid from UserInfo where account = \"" + account8 + "\";";
+                PreparedStatement preUpdate = connectionUpdate.prepareStatement(getUidSql);
+                ResultSet rst = preUpdate.executeQuery();
+                rst.next();
+                /* 获取用户id */
+                int UserUid = rst.getInt(1);
+                /* 通过用户uid 获得friendId */
+                String getIsupdateFriendIdSql = "select friendId from UserFriend where uid = \"" + UserUid  + "\";";
+                PreparedStatement preGetisUpdateUid = connectionUpdate.prepareStatement(getIsupdateFriendIdSql);
+                ResultSet isUpdateFriendId = preGetisUpdateUid.executeQuery();
+                HashSet<Integer> friend = new HashSet<Integer>();
+                /* 获取好友的Id */
+                while(isUpdateFriendId.next()){
+                    friend.add(isUpdateFriendId.getInt(1));
+                }
+
+                /* 用hashMap来保存待更新的好友的uid和标记isUpdate */
+                HashMap<Integer,Integer> FriendId = new HashMap<Integer, Integer>();
+
+                for(Integer id : friend){
+                    /* 通过好友和自己的映射关系来获得isUpdate
+                    *  比如我更新数据，好友表上的关系是好友-我 的 isUpdate设置更新 */
+                    String tSql = "select isUpdate from UserFriend where uid = \"" + id + "\" and isUpdate != 0 " +
+                            "and friendId = \"" + UserUid + "\";";
+                    PreparedStatement updatePst = connectionUpdate.prepareStatement(tSql);
+                    ResultSet updateDate = updatePst.executeQuery();
+                    int isUpdate = 0;
+                    /* 不用循环可能会抛出异常， 因为ResultSet可能为空
+                    *  获得isUpdate标记 */
+                    while(updateDate.next()){
+                        isUpdate = updateDate.getByte(1);
+                    }
+                    if(isUpdate != 0) {
+                        FriendId.put(id, isUpdate);
+                    }
+                }
+
+                /* 组装时需要判断一下 */
+                int tapp = 0;
+                /* 返回的信息 */
+                result += "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                        "\"result\":[";
+
+                /* 需要判断集合是否为空 */
+                if(FriendId.isEmpty()){
+                    /* 集合为空，说明没有好友需要更新数据 */
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account8 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"无好友更新信息\"}}";
+                }else {
+                    /* 遍历集合，分析isUpdate数据，找出标记，组装好友更新的数据 */
+                    for (Integer keyUid : FriendId.keySet()) {
+                        /* 获取需要更新的好友的姓名和头像 */
+                        String friendInfoSql = "select name, head from UserInfo where uid = \"" + keyUid + "\";";
+                        PreparedStatement friendInfoPst = connectionUpdate.prepareStatement(friendInfoSql);
+                        ResultSet friendInfoRs = friendInfoPst.executeQuery();
+                        friendInfoRs.next();
+                        /* 获取姓名和头像 */
+                        String tname = friendInfoRs.getString(1);
+                        String thead = friendInfoRs.getString(2);
+
+                        String name;
+                        if(tapp == 0){
+                            name = "{\"name\":\"" + tname + "\",";
+                            ++tapp;
+                        }else{
+                            name = ",{\"name\":\"" + tname + "\",";
+                        }
+                        String head = "\"head\":\"" + thead + "\",";
+                        String personPhoneNumber = "\"personNumber\":\"";
+                        String workPhoneNumber = "\"workPhoneNumber\":\"";
+                        String homePhoneNumber = "\"homePhoneNumber\":\"";
+                        String personEmail = "\"personEmail\":\"";
+                        String workEmail = "\"workEmail\":\"";
+                        String homeEmail = "\"homeEmail\":\"";
+                        String qqNumber = "\"qqNumber\":\"";
+                        String weiboNumber = "\"weiboNumber\":\"";
+
+                        int isUpdate = FriendId.get(keyUid);
+                        /* 8bit位 若标记为1 说明qqNumber更新 */
+                        if(isUpdate >= 128){
+                            /* 删除log128位 标记*/
+                            isUpdate -= 128;
+                            String weiboNumberSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 128;";
+                            PreparedStatement weiboNUmberPst = connectionUpdate.prepareStatement(weiboNumberSql);
+                            ResultSet weiboNumberRs = weiboNUmberPst.executeQuery();
+                            weiboNumberRs.next();
+                            weiboNumber += weiboNumberRs.getString(1);
+                        }
+                        if(isUpdate >= 64){
+                            isUpdate -= 64;
+                            String qqNumberSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 64;";
+                            PreparedStatement qqNumberPst = connectionUpdate.prepareStatement(qqNumberSql);
+                            ResultSet qqNumberRs = qqNumberPst.executeQuery();
+                            qqNumberRs.next();
+                            qqNumber += qqNumberRs.getString(1);
+                        }
+                        if(isUpdate >= 32){
+                            isUpdate -= 32;
+                            String homeEmailSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 32;";
+                            PreparedStatement homeEmailPst = connectionUpdate.prepareStatement(homeEmailSql);
+                            ResultSet homeEmailRs = homeEmailPst.executeQuery();
+                            homeEmailRs.next();
+                            homeEmail += homeEmailRs.getString(1);
+                        }
+                        if(isUpdate >= 16){
+                            isUpdate -= 16;
+                            String workEmailSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 16;";
+                            PreparedStatement workEmailPst = connectionUpdate.prepareStatement(workEmailSql);
+                            ResultSet workEmailRs = workEmailPst.executeQuery();
+                            workEmailRs.next();
+                            workEmail += workEmailRs.getString(1);
+                        }
+                        if(isUpdate >= 8){
+                            isUpdate -= 8;
+                            String personEmailSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 8;";
+                            PreparedStatement personEmailPst = connectionUpdate.prepareStatement(personEmailSql);
+                            ResultSet personEmailRs = personEmailPst.executeQuery();
+                            personEmailRs.next();
+                            personEmail += personEmailRs.getString(1);
+                        }
+                        if(isUpdate >= 4){
+                            isUpdate -= 4;
+                            String homePhoneNumberSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 4;";
+                            PreparedStatement homePhoneNumberPst = connectionUpdate.prepareStatement(homePhoneNumberSql);
+                            ResultSet homePhoneNumberRs = homePhoneNumberPst.executeQuery();
+                            homePhoneNumberRs.next();
+                            homePhoneNumber += homePhoneNumberRs.getString(1);
+                        }
+                        if(isUpdate >= 2){
+                            isUpdate -= 2;
+                            String workPhoneNumberSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 2;";
+                            PreparedStatement workPhoneNumberPst = connectionUpdate.prepareStatement(workPhoneNumberSql);
+                            ResultSet workPhoneNumberRs = workPhoneNumberPst.executeQuery();
+                            workPhoneNumberRs.next();
+                            workPhoneNumber += workPhoneNumberRs.getString(1);
+                        }
+                        if(isUpdate >= 1){
+                            isUpdate -= 1;
+                            String personPhoneNumberSql = "select content from UserContact where uid = \"" + keyUid
+                                    + "\" and type = 1;";
+                            PreparedStatement personPhoneNumberPst = connectionUpdate.prepareStatement(personPhoneNumberSql);
+                            ResultSet personPhoneNumberRs = personPhoneNumberPst.executeQuery();
+                            personPhoneNumberRs.next();
+                            personPhoneNumber += personPhoneNumberRs.getString(1);
+                        }
+                        result += personPhoneNumber;
+                        result += workPhoneNumber;
+                        result += homePhoneNumber;
+                        result += personEmail;
+                        result += workEmail;
+                        result += homeEmail;
+                        result += qqNumber;
+                        result += weiboNumber;
+                    }
+                }
+                result += "]};";
+                connectionUpdate.close();
+                break;
+
 
             /* mark == 9
             *  添加联系人，UserFriend中添加数据，注意要返回好友的信息 */
@@ -455,35 +629,300 @@ public class ParseJson {
                 /* 执行sql并返回结果 */
                 iret = es9.update();
                 if(iret == 1){
-                    result += " 添加好友成功";
+                    //result += " 添加好友成功";
+                    System.out.println("添加好友成功");
                 }else{
-                    result += " 添加好友失败";
+                    //result += " 添加好友失败";
+                    System.out.println("添加好友失败");
                 }
-                /* 查询该好友的全部信息并组装成json发送回客户端 */
+                /* 准备查询该好友的全部信息，并且返回 */
+                String friendInfo = "select name,head from UserInfo where account = \"" + friendAccount
+                        + "\";";
+                Connection addFriendCon = XlDbPoll.getConnection();
+                PreparedStatement addFriendPst = addFriendCon.prepareStatement(friendInfo);
+                ResultSet addFriendRs = addFriendPst.executeQuery();
+                /* 获取姓名和头像 */
+                String tname = "";
+                String thead = "";
+                while(addFriendRs.next()){
+                    tname = addFriendRs.getString(1);
+                    thead = addFriendRs.getString(2);
+                }
+                /* 准备返回信息 */
+                String name = "{\"name\":\"" + tname + "\",";
+                String head = "\"head\":\"" + thead + "\",";
+                String personPhoneNumber = "\"personNumber\":\"";
+                String workPhoneNumber = "\"workPhoneNumber\":\"";
+                String homePhoneNumber = "\"homePhoneNumber\":\"";
+                String personEmail = "\"personEmail\":\"";
+                String workEmail = "\"workEmail\":\"";
+                String homeEmail = "\"homeEmail\":\"";
+                String qqNumber = "\"qqNumber\":\"";
+                String weiboNumber = "\"weiboNumber\":\"";
+                result += "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                        "\"result\":";
 
+                /* 查询该好友的全部信息并组装成json发送回客户端 */
+                result += name;
+                result += head;
+                String tsql = "select uid from UserInfo where account = \"" + friendAccount + "\";";
+                PreparedStatement tPst = addFriendCon.prepareStatement(tsql);
+                ResultSet tRs = tPst.executeQuery();
+                tRs.next();
+                int friendUid = tRs.getInt(1);
+                String addFriendSql = "select type, content from UserContact where uid = \"" + friendUid + "\";";
+                PreparedStatement friendPst = addFriendCon.prepareStatement(addFriendSql);
+                ResultSet addFriendInfoRs = friendPst.executeQuery();
+                /* 获得好友的信息及联系方式
+                 * 下面构造result
+                 * */
+                while(addFriendInfoRs.next()){
+                    /* 获得标记联系方式和具体的联系方式 */
+                    int type = addFriendInfoRs.getInt(1);
+                    String content = addFriendInfoRs.getString(2);
+                    /* 由于好友的信息不一定完全
+                     * 比如好友只填写了电话，微博qq等都为空，
+                     * 所以在这需要自己进行判断
+                     * */
+                    switch(type){
+                        case 1:
+                                /* 如果存在个人电话，获取 */
+                            personPhoneNumber += content;
+                            personPhoneNumber += "\",";
+                            break;
+                        case 2:
+                                /* 如果存在工作电话，获取 */
+                            workPhoneNumber += content;
+                            workPhoneNumber += "\",";
+                            break;
+                        case 4:
+                                /* 如果存在家庭电话，获取 */
+                            homePhoneNumber += content;
+                            homePhoneNumber += "\",";
+                            break;
+                        case 8:
+                                /* 如果存在个人邮箱，获取 */
+                            personEmail += content;
+                            personEmail += "\",";
+                            break;
+                        case 16:
+                                /* 如果存在工作邮箱，获取 */
+                            workEmail += content;
+                            workEmail += "\",";
+                            break;
+                        case 32:
+                                /* 如果存在家庭邮箱，获取*/
+                            homeEmail += content;
+                            homeEmail += "\",";
+                            break;
+                        case 64:
+                                /* 如果存在qq，获取 */
+                            qqNumber += content;
+                            qqNumber += "\",";
+                            break;
+                        case 128:
+                                /* 如果存在微博，获取 */
+                            weiboNumber += content;
+                            weiboNumber += "\"}";
+                            break;
+                    }
+                }
+                /* 拼装返回的result */
+                result += personPhoneNumber;
+                result += workPhoneNumber;
+                result += homePhoneNumber;
+                result += personEmail;
+                result += workEmail;
+                result += homeEmail;
+                result += qqNumber;
+                result += weiboNumber;
+                result += "};";
+                /* 关闭连接池 */
+                addFriendCon.close();
+                break;
 
             /* mark == 10
             *  生成二维码加好友 */
             case 10:
                 /* 获取用户帐号 */
                 String account10 = js.getString("account");
-                /* 获取二维码 */
-                String qcode10 = js.getString("qcode");
-                /* 看服务端是否保存了此二维码，取出比较，如果时间过了回复客户端请求失败
-                *  并发从数据库删除二维码，如果时间未过则执行添加好友语句，返回是否成功 */
+                /* 获取好友账户(二维码上) */
+                String addFriendAccount = js.getString("friendaccount");
+                /* 获取权限(二维码上) */
+                int addAuthority = js.getInt("authority");
+                /* 获取超时时间，取时比较，若超时返回错误(二维码上) */
+                String addTime_out = js.getString("time_out");
+                /* 获取本人和好友的uid
+                *  向好友表中插入一个数据
+                *  根据authority获取本人信息
+                *  将获取的本人信息组装成result返回给用户
+                * */
+                /* 从数据库连接池中取出一条记录 */
+                Connection QrAddFriendConn = XlDbPoll.getConnection();
+                /* 获取本人和好友uid的sql语句 */
+                String getUserUid = "select uid from UserInfo where account = \"" + account10 + "\";";
+                String getFriendUid = "select uid from UserInfo where account = \"" + addFriendAccount + "\"";
+                /* 得到本人和好友的uid */
+                PreparedStatement getUserUidPst = QrAddFriendConn.prepareStatement(getUserUid);
+                ResultSet getUserRs = getUserUidPst.executeQuery();
+                getUserRs.next();
+                int userUid = getUserRs.getInt(1);
+                PreparedStatement getUserFriendUid = QrAddFriendConn.prepareStatement(getFriendUid);
+                ResultSet getFriendRs = getUserFriendUid.executeQuery();
+                getFriendRs.next();
+                int getfriendUid = getFriendRs.getInt(1);
+                /* 向好友表中插入一条数据 */
+                String insertFriendTable = "insert into UserFriend (uid, friendId) values (\"" + getfriendUid
+                        + "\", \"" + userUid + "\");";
+                PreparedStatement insertFriend = QrAddFriendConn.prepareStatement(insertFriendTable);
+                int insertRet = insertFriend.executeUpdate();
+                if(insertRet == 1){
+                    System.out.println("yes");
+                }else {
+                    System.out.println("no");
+                }
+                /* 根据authority获取信息 */
+                String getNameHeadSql = "select name,head from UserInfo where uid = \"" + getFriendUid + "\";";
+                PreparedStatement getNameHeadPst = QrAddFriendConn.prepareStatement(getNameHeadSql);
+                ResultSet getNameHeadRs = getNameHeadPst.executeQuery();
+                getNameHeadRs.next();
+                String itname = getNameHeadRs.getString(1);
+                String ithead = getNameHeadRs.getString(2);
+                /* 准备组装result */
+                String iname = "{\"name\":\"" + itname + "\",";
+                String ihead = "\"head\":\"" + ithead + "\",";
+                String ipersonPhoneNumber = "\"personNumber\":\"";
+                String iworkPhoneNumber = "\"workPhoneNumber\":\"";
+                String ihomePhoneNumber = "\"homePhoneNumber\":\"";
+                String ipersonEmail = "\"personEmail\":\"";
+                String iworkEmail = "\"workEmail\":\"";
+                String ihomeEmail = "\"homeEmail\":\"";
+                String iqqNumber = "\"qqNumber\":\"";
+                String iweiboNumber = "\"weiboNumber\":\"";
+                result += "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                        "\"result\":";
+
+                if(addAuthority >= 128){
+                            /* 删除log128位 标记*/
+                    addAuthority -= 128;
+                    String weiboNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 128;";
+                    PreparedStatement weiboNUmberPst = QrAddFriendConn.prepareStatement(weiboNumberSql);
+                    ResultSet weiboNumberRs = weiboNUmberPst.executeQuery();
+                    weiboNumberRs.next();
+                    iweiboNumber += weiboNumberRs.getString(1);
+                }
+                if(addAuthority >= 64){
+                    addAuthority -= 64;
+                    String qqNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 64;";
+                    PreparedStatement qqNumberPst = QrAddFriendConn.prepareStatement(qqNumberSql);
+                    ResultSet qqNumberRs = qqNumberPst.executeQuery();
+                    qqNumberRs.next();
+                    iqqNumber += qqNumberRs.getString(1);
+                }
+                if(addAuthority >= 32){
+                    addAuthority -= 32;
+                    String homeEmailSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 32;";
+                    PreparedStatement homeEmailPst = QrAddFriendConn.prepareStatement(homeEmailSql);
+                    ResultSet homeEmailRs = homeEmailPst.executeQuery();
+                    homeEmailRs.next();
+                    ihomeEmail += homeEmailRs.getString(1);
+                }
+                if(addAuthority >= 16){
+                    addAuthority -= 16;
+                    String workEmailSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 16;";
+                    PreparedStatement workEmailPst = QrAddFriendConn.prepareStatement(workEmailSql);
+                    ResultSet workEmailRs = workEmailPst.executeQuery();
+                    workEmailRs.next();
+                    iworkEmail += workEmailRs.getString(1);
+                }
+                if(addAuthority >= 8){
+                    addAuthority -= 8;
+                    String personEmailSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 8;";
+                    PreparedStatement personEmailPst = QrAddFriendConn.prepareStatement(personEmailSql);
+                    ResultSet personEmailRs = personEmailPst.executeQuery();
+                    personEmailRs.next();
+                    ipersonEmail += personEmailRs.getString(1);
+                }
+                if(addAuthority >= 4){
+                    addAuthority -= 4;
+                    String homePhoneNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 4;";
+                    PreparedStatement homePhoneNumberPst = QrAddFriendConn.prepareStatement(homePhoneNumberSql);
+                    ResultSet homePhoneNumberRs = homePhoneNumberPst.executeQuery();
+                    homePhoneNumberRs.next();
+                    ihomePhoneNumber += homePhoneNumberRs.getString(1);
+                }
+                if(addAuthority >= 2){
+                    addAuthority -= 2;
+                    String workPhoneNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 2;";
+                    PreparedStatement workPhoneNumberPst = QrAddFriendConn.prepareStatement(workPhoneNumberSql);
+                    ResultSet workPhoneNumberRs = workPhoneNumberPst.executeQuery();
+                    workPhoneNumberRs.next();
+                    iworkPhoneNumber += workPhoneNumberRs.getString(1);
+                }
+                if(addAuthority >= 1){
+                    addAuthority -= 1;
+                    String personPhoneNumberSql = "select content from UserContact where uid = \"" + getFriendUid
+                            + "\" and type = 1;";
+                    PreparedStatement personPhoneNumberPst = QrAddFriendConn.prepareStatement(personPhoneNumberSql);
+                    ResultSet personPhoneNumberRs = personPhoneNumberPst.executeQuery();
+                    personPhoneNumberRs.next();
+                    ipersonPhoneNumber += personPhoneNumberRs.getString(1);
+                }
+                result += ipersonPhoneNumber;
+                result += iworkPhoneNumber;
+                result += ihomePhoneNumber;
+                result += ipersonEmail;
+                result += iworkEmail;
+                result += ihomeEmail;
+                result += iqqNumber;
+                result += iweiboNumber;
+
+                result += "]};";
+                QrAddFriendConn.close();
+                break;
+
 
 
             /* mark == 11
             *  生成二维码
             *  客户端生成一张二维码发送给服务器服务器保存 */
             case 11:
+                /* 服务器并不保存图片，仅仅保存二维码的内容（请求）
+                * 当添加好友时也仅仅是获取到二维码请求，然后
+                * 发送给服务端，服务端判断此请求是否有效及内容
+                * */
                 /* 获取用户账户 */
                 String account11 = js.getString("account");
-                /* 获取二维码 */
-                String qcode11 = js.getString("qcode");
-                /* 生成sql语句 */
-                String sql11 = "";
-                /* 二维码时间问题， 权限问题 */
+                /* 获取权限 */
+                int authority = js.getInt("authority");
+                /* 获取超时时间 */
+                int time_out = js.getInt("time_out");
+                /* 生成插入QRcode数据的sql语句 */
+                String insertQRcodeSql = "insert into QRcode (uid, authority, time_out) values ((" +
+                        "select uid from UserInfo where account = \"" + account11  + "\"), \"" + authority +
+                        "\", \"" + time_out + "\")";
+                /* 从数据库连接池中获取数据库连接 */
+                Connection insertQRcodeConn = XlDbPoll.getConnection();
+                PreparedStatement insertQRcodePst = insertQRcodeConn.prepareStatement(insertQRcodeSql);
+                int insertQRcodeRet = insertQRcodePst.executeUpdate();
+                /* 构建result，返回给客户端 */
+                if(insertQRcodeRet == 1){
+                        result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                                "\"result\":{\"requestPhoneNum\":\"" + account11 + "\", \"IsSuccess\":\"success\"," +
+                                "\"mark\":" + mark + ",\"ResultINFO\":\"新建二维码成功\"}}";
+                }else {
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + account11 + "\", \"IsSuccess\":\"failure\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"新建二维码失败\"}}";
+                }
+                break;
 
 
             /* mark ==12
@@ -529,9 +968,13 @@ public class ParseJson {
                 iret = es13.update();
                 result = Integer.valueOf(iret).toString();
                 if(iret == 1){
-                    result += " 删除成功";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + acconut13 + "\", \"IsSuccess\":\"success\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"删除成功\"}}";
                 }else{
-                    result += " 删除失败";
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"" + acconut13 + "\", \"IsSuccess\":\"failure\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"删除失败\"}}";
                 }
 
         }
