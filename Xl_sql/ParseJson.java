@@ -1,3 +1,4 @@
+import com.sun.scenario.effect.impl.sw.sse.SSEBlend_SRC_OUTPeer;
 import org.json.JSONObject;
 
 import java.sql.Connection;
@@ -6,10 +7,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
-
-
 /**
- * Created by wangweihao on 15-8-6.
+ * Created by wwh on 15-8-6.
  */
 public class ParseJson {
     /* 待解析的json对象 */
@@ -90,7 +89,7 @@ public class ParseJson {
                 }catch (Exception e){
                     System.out.println("帐号以存在");
                     result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
-                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"success\"," +
+                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"failure\"," +
                             "\"mark\":" + mark + ",\"ResultINFO\":\"帐号以存在\"}}";
                     break;
                 }
@@ -101,7 +100,7 @@ public class ParseJson {
                             "\"mark\":" + mark + ",\"ResultINFO\":\"注册成功\"}}";
                 }else{
                     result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
-                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"success\"," +
+                            "\"result\":{\"requestPhoneNum\":\"" + account2 + "\", \"IsSuccess\":\"failure\"," +
                             "\"mark\":" + mark + ",\"ResultINFO\":\"注册失败\"}}";
                 }
                 break;
@@ -1028,6 +1027,124 @@ public class ParseJson {
                             "\"mark\":" + mark + ",\"ResultINFO\":\"删除失败\"}}";
                 }
                 break;
+
+            /* mark == 14
+            * 用户发送所有的个人信息,保存到数据库
+            * */
+            case 14:
+                /*获取一条数据库连接*/
+                Connection updateInfoConn = XlDbPoll.getConnection();;
+                try {
+                    /*获取账户*/
+                    String UserInfoAccount = js.getString("account");
+                    /*获取信息json对象*/
+                    JSONObject UserInfo = js.getJSONObject("personinfo");
+                    /*获取姓名和头像*/
+                    String UserInfoName = UserInfo.getString("name");
+                    String UserInfoHead = UserInfo.getString("headPic");
+                    /*更新数据库的姓名和头像*/
+                    String UpdateNameAndHeadSql = "update UserInfo set name = \"" + UserInfoName + "\", head = \"" +
+                            UserInfoHead + "\" where account = \"" + UserInfoAccount + "\";";
+                    PreparedStatement updatePst = updateInfoConn.prepareStatement(UpdateNameAndHeadSql);
+                    updatePst.executeUpdate();
+                    /*获取Contact联系方式*/
+                    /*获取email*/
+                    JSONObject Email = UserInfo.getJSONObject("emailInfo");
+                    /*获取电话*/
+                    JSONObject Phone = UserInfo.getJSONObject("phoneInfo");
+                    /*获取qq*/
+                    String UserQQ = UserInfo.getString("qq");
+                    /*获取weibo*/
+                    String Weibo = UserInfo.getString("weiboAdress");
+
+                    /*获取account 的uid*/
+                    String getUserUidSql = "select uid from UserInfo where account = \"" + UserInfoAccount + "\";";
+                    PreparedStatement getUserUidSqlPst = updateInfoConn.prepareStatement(getUserUidSql);
+                    ResultSet UserInfoUid = getUserUidSqlPst.executeQuery();
+                    UserInfoUid.next();
+                    int UUid = UserInfoUid.getInt(1);
+
+                    /*获取个人Email,更新数据库*/
+                    String personalEmail = Email.getString("personalEmail");
+                    if (!personalEmail.equals("")) {
+                        String getPersonalEmail = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 8, \"" + personalEmail + "\");";
+                        PreparedStatement personalEmailPst = updateInfoConn.prepareStatement(getPersonalEmail);
+                        personalEmailPst.executeUpdate();
+                    }
+                    /*获取家庭Email,更新数据库*/
+                    String HomeEmail = Email.getString("personalEmail");
+                    if (!HomeEmail.equals("")) {
+                        String insertHomeEmailSql = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 16, \"" + HomeEmail + "\");";
+                        PreparedStatement homeEmailPst = updateInfoConn.prepareStatement(insertHomeEmailSql);
+                        homeEmailPst.executeUpdate();
+                    }
+                    /*获取个人Email,更新数据库*/
+                    String WorkEmail = Email.getString("workEmail");
+                    if (!WorkEmail.equals("")) {
+                        String insertWorkEmailSql = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 32, \"" + WorkEmail + "\");";
+                        PreparedStatement workEmailPst = updateInfoConn.prepareStatement(insertWorkEmailSql);
+                        workEmailPst.executeUpdate();
+                    }
+                    /*获取个人电话,更新数据库*/
+                    String PersonalPhone = Phone.getString("personalPhoneNum");
+                    if (!PersonalPhone.equals("")) {
+                        String insertPersonalPhoneSql = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 1, \"" + PersonalPhone + "\");";
+                        PreparedStatement personalPhonePst = updateInfoConn.prepareStatement(insertPersonalPhoneSql);
+                        personalPhonePst.executeUpdate();
+                    }
+                    /*获取工作电话,更新数据库*/
+                    String WorkPhone = Phone.getString("workPhoneNum");
+                    if (!WorkPhone.equals("")) {
+                        String insertWorkPhoneSql = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 2, \"" + WorkPhone + "\");";
+                        PreparedStatement workPhonePst = updateInfoConn.prepareStatement(insertWorkPhoneSql);
+                        workPhonePst.executeUpdate();
+                    }
+                    /*获取其他电话,更新数据库*/
+                    String OtherPhone = Phone.getString("otherPhoneNum");
+                    if (!OtherPhone.equals("")) {
+                        String insertOtherPhoneSql = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 4, \"" + OtherPhone + "\");";
+                        PreparedStatement otherPhonePst = updateInfoConn.prepareStatement(insertOtherPhoneSql);
+                        otherPhonePst.executeUpdate();
+                    }
+                    /*更新qq*/
+                    if (!UserQQ.equals("")) {
+                        String insertUserQQSql = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 64, \"" + UserQQ + "\");";
+                        PreparedStatement userQQPst = updateInfoConn.prepareStatement(insertUserQQSql);
+                        userQQPst.executeUpdate();
+                    }
+                    /*获取weibo,更新数据库*/
+                    if (!Weibo.equals("")) {
+                        System.out.println("weibo:" + Weibo + "weibo:");
+                        if (Weibo == "") {
+                            System.out.println("hahahha");
+                        }
+                        String insertUserWeiboAddress1Sql = "insert into UserContact (uid, type, content) values (" + UUid +
+                                ", 128, \"" + Weibo + "\");";
+                        PreparedStatement weiboAddress1Pst = updateInfoConn.prepareStatement(insertUserWeiboAddress1Sql);
+                        weiboAddress1Pst.executeUpdate();
+                    }
+                }catch (Exception e){
+                    e.printStackTrace();
+                    result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                            "\"result\":{\"requestPhoneNum\":\"0000\", \"IsSuccess\":\"failure\"," +
+                            "\"mark\":" + mark + ",\"ResultINFO\":\"更新失败\"}}";
+                    break;
+                }finally {
+                    updateInfoConn.close();
+                }
+                result = "{\"error\":0, \"status\":\"success\", \"date\":\"2015-08\", " +
+                        "\"result\":{\"requestPhoneNum\":\"0000\", \"IsSuccess\":\"success\"," +
+                        "\"mark\":" + mark + ",\"ResultINFO\":\"更新成功\"}}";
+
+                break;
+
         }
         return result;
     }
